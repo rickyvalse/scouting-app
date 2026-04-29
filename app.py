@@ -188,7 +188,7 @@ elif st.session_state.pagina == 'partite':
 
 # 3. SCOUTING LIVE
 elif st.session_state.pagina == 'scouting':
-    st.markdown(f"<h1>⚽ Match: {st.session_state.part_attuale}</h1>", unsafe_allow_html=True)
+    st.markdown(f"<h1>⚽ Match: {st.session_state.partita_attuale}</h1>", unsafe_allow_html=True)
     c_campo, c_azioni = st.columns([1, 1])
     with c_campo:
         for r in range(3):
