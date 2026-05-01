@@ -70,7 +70,7 @@ def download_from_drive(folder_id, local_path):
                 while not done: _, done = downloader.next_chunk()
     except: pass
 
-# --- STILE RIPRISTINATO E CORRETTO ---
+# --- UI & DESIGN ---
 st.set_page_config(page_title="Tactical Scout Pro", layout="wide")
 
 st.markdown("""
@@ -93,18 +93,21 @@ st.markdown("""
     p, span, label, .stMarkdown { color: #FFFFFF !important; font-weight: 500; }
     h1, h2, h3 { color: #FFFFFF !important; text-align: center; font-weight: 700; }
     
-    /* FIX POPOVER: Togliamo il bianco dai pulsanti dei menu a tendina */
+    /* FIX POPOVER: Trasparente/Verde fisso (Senza cambio colore al mouse) */
     div[data-testid="stPopover"] > button {
-        background-color: rgba(255, 255, 255, 0.1) !important;
+        background-color: rgba(27, 94, 32, 0.2) !important;
         border: 1px solid #1b5e20 !important;
         color: white !important;
+        padding: 8px 16px !important;
     }
-    div[data-testid="stPopover"] > button:hover {
-        background-color: #1b5e20 !important;
-        border-color: white !important;
+    
+    div[data-testid="stPopover"] > button div, 
+    div[data-testid="stPopover"] > button p,
+    div[data-testid="stPopover"] [data-testid="stMarkdownContainer"] {
+        background: transparent !important;
     }
 
-    /* Pulsanti Standard Verde Pieno */
+    /* Pulsanti Standard Verde Pieno fisso */
     .stButton > button { 
         background-color: #1b5e20 !important; 
         color: white !important; 
@@ -112,15 +115,23 @@ st.markdown("""
         border: none !important; 
         font-weight: 600 !important;
     }
-    .stButton > button:hover { background-color: #2e7d32 !important; }
     
+    /* Box Video */
     .video-box { 
         background: rgba(255,255,255,0.05); padding: 15px; border-radius: 12px; 
         margin-bottom: 20px; border: 1px solid rgba(255,255,255,0.1); 
     }
+    
+    /* Menu a tendina aperto */
+    div[data-testid="stPopoverBody"] {
+        background-color: rgba(15, 18, 25, 0.98) !important;
+        border: 1px solid #1b5e20 !important;
+        color: white !important;
+    }
     </style>
     """, unsafe_allow_html=True)
 
+# --- AVVIO APP ---
 if 'data_loaded' not in st.session_state:
     with st.spinner("Sincronizzazione dati..."):
         download_from_drive(FOLDER_ID, "data")
