@@ -93,21 +93,35 @@ st.markdown("""
     p, span, label, .stMarkdown { color: #FFFFFF !important; font-weight: 500; }
     h1, h2, h3 { color: #FFFFFF !important; text-align: center; font-weight: 700; }
     
-    /* FIX POPOVER: Trasparente/Verde fisso (Senza cambio colore al mouse) */
+    /* --- FIX TOTALE POPOVER --- */
+    /* 1. Pulsante che apre il menu */
     div[data-testid="stPopover"] > button {
-        background-color: rgba(27, 94, 32, 0.2) !important;
-        border: 1px solid #1b5e20 !important;
+        background-color: #1b5e20 !important;
+        border: 1px solid #2e7d32 !important;
         color: white !important;
         padding: 8px 16px !important;
     }
     
-    div[data-testid="stPopover"] > button div, 
-    div[data-testid="stPopover"] > button p,
-    div[data-testid="stPopover"] [data-testid="stMarkdownContainer"] {
-        background: transparent !important;
+    /* 2. Il contenitore interno del menu (quello che vedi bianco nello screenshot) */
+    div[data-testid="stPopoverBody"] {
+        background-color: #0f1219 !important;
+        border: 2px solid #1b5e20 !important;
+    }
+    
+    /* 3. Forza tutti i sotto-elementi del popover a non avere sfondi bianchi */
+    div[data-testid="stPopoverBody"] div, 
+    div[data-testid="stPopoverBody"] [data-testid="stVerticalBlock"] {
+        background-color: transparent !important;
     }
 
-    /* Pulsanti Standard Verde Pieno fisso */
+    /* 4. Input di testo dentro il popover */
+    div[data-testid="stPopoverBody"] input {
+        background-color: rgba(255,255,255,0.05) !important;
+        color: white !important;
+        border: 1px solid rgba(255,255,255,0.2) !important;
+    }
+
+    /* --- PULSANTI STANDARD VERDI --- */
     .stButton > button { 
         background-color: #1b5e20 !important; 
         color: white !important; 
@@ -120,13 +134,6 @@ st.markdown("""
     .video-box { 
         background: rgba(255,255,255,0.05); padding: 15px; border-radius: 12px; 
         margin-bottom: 20px; border: 1px solid rgba(255,255,255,0.1); 
-    }
-    
-    /* Menu a tendina aperto */
-    div[data-testid="stPopoverBody"] {
-        background-color: rgba(15, 18, 25, 0.98) !important;
-        border: 1px solid #1b5e20 !important;
-        color: white !important;
     }
     </style>
     """, unsafe_allow_html=True)
