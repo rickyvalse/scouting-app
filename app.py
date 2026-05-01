@@ -25,13 +25,21 @@ drive_service = get_drive_service()
 # --- FUNZIONI SINCRONIZZAZIONE ---
 def upload_to_drive(file_path, folder_id):
     file_metadata = {'name': os.path.basename(file_path), 'parents': [folder_id]}
+    # Aggiungiamo mimetype per aiutare Google a capire che è un file Excel o Video
     media = MediaFileUpload(file_path, resumable=True)
+    
     query = f"name = '{os.path.basename(file_path)}' and '{folder_id}' in parents and trashed = false"
     results = drive_service.files().list(q=query).execute().get('files', [])
-    if results:
-        drive_service.files().update(fileId=results[0]['id'], media_body=media).execute()
-    else:
-        drive_service.files().create(body=file_metadata, media_body=media, fields='id').execute()
+    
+    try:
+        if results:
+            # Se esiste già, lo aggiorna
+            drive_service.files().update(fileId=results[0]['id'], media_body=media).execute()
+        else:
+            # Se non esiste, lo crea
+            drive_service.files().create(body=file_metadata, media_body=media, fields='id').execute()
+    except Exception as e:
+        st.error(f"Errore durante l'upload su Drive: {e}")
 
 def download_from_drive(folder_id, local_path):
     if not os.path.exists(local_path): os.makedirs(local_path)
