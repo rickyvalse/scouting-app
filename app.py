@@ -93,35 +93,39 @@ st.markdown("""
     p, span, label, .stMarkdown { color: #FFFFFF !important; font-weight: 500; }
     h1, h2, h3 { color: #FFFFFF !important; text-align: center; font-weight: 700; }
     
-    /* --- FIX TOTALE POPOVER --- */
-    /* 1. Pulsante che apre il menu */
+    /* --- FIX RADICALE POPOVER (TASTO NUOVO ATLETA) --- */
+    /* Rimuove il blocco bianco dal pulsante esterno */
     div[data-testid="stPopover"] > button {
         background-color: #1b5e20 !important;
         border: 1px solid #2e7d32 !important;
         color: white !important;
         padding: 8px 16px !important;
     }
-    
-    /* 2. Il contenitore interno del menu (quello che vedi bianco nello screenshot) */
+
+    /* Forza la trasparenza su TUTTI i contenitori interni del pulsante (Icona + e Testo) */
+    div[data-testid="stPopover"] > button div, 
+    div[data-testid="stPopover"] > button span,
+    div[data-testid="stPopover"] > button p {
+        background: transparent !important;
+        background-color: transparent !important;
+        color: white !important;
+    }
+
+    /* Contenitore del menu a tendina aperto */
     div[data-testid="stPopoverBody"] {
         background-color: #0f1219 !important;
         border: 2px solid #1b5e20 !important;
+        color: white !important;
     }
     
-    /* 3. Forza tutti i sotto-elementi del popover a non avere sfondi bianchi */
-    div[data-testid="stPopoverBody"] div, 
-    div[data-testid="stPopoverBody"] [data-testid="stVerticalBlock"] {
-        background-color: transparent !important;
-    }
-
-    /* 4. Input di testo dentro il popover */
+    /* SFONDO BIANCO SOLO PER L'INPUT TESTO (Dove scrivi i nomi) */
     div[data-testid="stPopoverBody"] input {
-        background-color: rgba(255,255,255,0.05) !important;
-        color: white !important;
-        border: 1px solid rgba(255,255,255,0.2) !important;
+        background-color: white !important;
+        color: black !important;
+        border-radius: 5px !important;
     }
 
-    /* --- PULSANTI STANDARD VERDI --- */
+    /* --- PULSANTI STANDARD --- */
     .stButton > button { 
         background-color: #1b5e20 !important; 
         color: white !important; 
@@ -130,7 +134,6 @@ st.markdown("""
         font-weight: 600 !important;
     }
     
-    /* Box Video */
     .video-box { 
         background: rgba(255,255,255,0.05); padding: 15px; border-radius: 12px; 
         margin-bottom: 20px; border: 1px solid rgba(255,255,255,0.1); 
@@ -185,7 +188,7 @@ elif st.session_state.pagina == 'partite':
 
     with tab1:
         pop_match = st.popover("➕ Nuova Sessione", use_container_width=True)
-        nome_m = pop_match.text_input("Nome Match", "Gara_" + datetime.now().strftime("%d-%m"))
+        nome_m = pop_match.text_input("Nome Match")
         if pop_match.button("Avvia Scouting"):
             st.session_state.partita_attuale = nome_m
             st.session_state.dati_match = pd.DataFrame(columns=["Ora", "Azione", "Zona"])
