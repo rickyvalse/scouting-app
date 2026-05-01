@@ -80,7 +80,7 @@ st.markdown("""
     html, body, [class*="css"] { font-family: 'Urbanist', sans-serif !important; color: white !important; }
     
     .stApp {
-        background: linear-gradient(rgba(0,0,0,0.7), rgba(0,0,0,0.7)), 
+        background: linear-gradient(rgba(0,0,0,0.8), rgba(0,0,0,0.8)), 
                     url('https://images.unsplash.com/photo-1556056504-5c7696c4c28d?q=80&w=2076&auto=format&fit=crop');
         background-size: cover; background-position: center; background-attachment: fixed;
     }
@@ -89,61 +89,60 @@ st.markdown("""
         background: rgba(15, 18, 25, 0.95); padding: 30px; border-radius: 20px;
         border: 1px solid rgba(255,255,255,0.1); max-width: 950px; margin: auto; backdrop-filter: blur(10px);
     }
-    
-    p, span, label, .stMarkdown { color: #FFFFFF !important; font-weight: 500; }
-    h1, h2, h3 { color: #FFFFFF !important; text-align: center; font-weight: 700; }
-    
-    /* --- FIX RADICALE POPOVER (TASTO NUOVO ATLETA) --- */
-    /* Rimuove il blocco bianco dal pulsante esterno */
+
+    /* --- AZZERAMENTO BLOCCO BIANCO POPOVER --- */
+    /* Rimuove lo sfondo bianco da TUTTO il componente popover prima del click */
     div[data-testid="stPopover"] > button {
-        background-color: #1b5e20 !important;
-        border: 1px solid #2e7d32 !important;
-        color: white !important;
-        padding: 8px 16px !important;
-    }
-
-    /* Forza la trasparenza su TUTTI i contenitori interni del pulsante (Icona + e Testo) */
-    div[data-testid="stPopover"] > button div, 
-    div[data-testid="stPopover"] > button span,
-    div[data-testid="stPopover"] > button p {
-        background: transparent !important;
         background-color: transparent !important;
+        background: transparent !important;
+        border: 1px solid rgba(255,255,255,0.3) !important;
         color: white !important;
+        box-shadow: none !important;
     }
 
-    /* Contenitore del menu a tendina aperto */
-    div[data-testid="stPopoverBody"] {
-        background-color: #0f1219 !important;
-        border: 2px solid #1b5e20 !important;
-        color: white !important;
+    /* Rimuove il rettangolo bianco interno che copre l'icona + */
+    div[data-testid="stPopover"] [data-testid="stMarkdownContainer"] p,
+    div[data-testid="stPopover"] [data-testid="stMarkdownContainer"] {
+        background-color: transparent !important;
+        background: transparent !important;
+        margin: 0 !important;
+        padding: 0 !important;
     }
-    
-    /* SFONDO BIANCO SOLO PER L'INPUT TESTO (Dove scrivi i nomi) */
+
+    /* --- GESTIONE INPUT (DOVE SCRIVI) --- */
+    /* Popover aperto: sfondo scuro */
+    div[data-testid="stPopoverBody"] {
+        background-color: #12151c !important;
+        border: 1px solid #1b5e20 !important;
+    }
+
+    /* Input di testo: Sfondo bianco solo per l'area di scrittura per leggibilità */
     div[data-testid="stPopoverBody"] input {
         background-color: white !important;
         color: black !important;
-        border-radius: 5px !important;
+        border: none !important;
+    }
+    
+    /* Label sopra l'input nel popover */
+    div[data-testid="stPopoverBody"] label p {
+        color: white !important;
     }
 
-    /* --- PULSANTI STANDARD --- */
+    /* --- BOTTONI VERDI --- */
     .stButton > button { 
         background-color: #1b5e20 !important; 
         color: white !important; 
-        border-radius: 8px !important; 
-        border: none !important; 
+        border: none !important;
         font-weight: 600 !important;
     }
-    
-    .video-box { 
-        background: rgba(255,255,255,0.05); padding: 15px; border-radius: 12px; 
-        margin-bottom: 20px; border: 1px solid rgba(255,255,255,0.1); 
-    }
+
+    h1, h2, h3 { text-align: center; color: white !important; }
     </style>
     """, unsafe_allow_html=True)
 
 # --- AVVIO APP ---
 if 'data_loaded' not in st.session_state:
-    with st.spinner("Sincronizzazione dati..."):
+    with st.spinner("Sincronizzazione..."):
         download_from_drive(FOLDER_ID, "data")
         st.session_state.data_loaded = True
 
@@ -153,14 +152,15 @@ if 'giocatore_sel' not in st.session_state: st.session_state.giocatore_sel = Non
 
 st.markdown('<div class="main-container">', unsafe_allow_html=True)
 
-# --- 1. HOME ---
+# --- HOME ---
 if st.session_state.pagina == 'home':
     st.markdown("<h1>🏟️ Tactical Scout Pro</h1>", unsafe_allow_html=True)
     c1, c2 = st.columns([3, 1])
     with c2:
+        # Il tasto "Nuovo" ora non ha più il blocco bianco
         nuovo = st.popover("➕ Nuovo Atleta")
         n_atleta = nuovo.text_input("Nome Atleta")
-        if nuovo.button("Conferma Atleta"):
+        if nuovo.button("Conferma"):
             if n_atleta:
                 get_or_create_player_folder(n_atleta)
                 os.makedirs(os.path.join(BASE_DIR, n_atleta.replace(" ", "_")), exist_ok=True)
@@ -171,7 +171,7 @@ if st.session_state.pagina == 'home':
         giocatori = sorted([d for d in os.listdir(BASE_DIR) if os.path.isdir(os.path.join(BASE_DIR, d))])
         for g in giocatori:
             col_n, col_d = st.columns([7, 1])
-            if col_n.button(f"👤 {g.replace('_', ' ')}", width='stretch', key=f"btn_{g}"):
+            if col_n.button(f"👤 {g.replace('_', ' ')}", width='stretch'):
                 st.session_state.giocatore_sel = g
                 st.session_state.pagina = 'partite'
                 st.rerun()
@@ -179,7 +179,7 @@ if st.session_state.pagina == 'home':
                 delete_from_drive(g, FOLDER_ID)
                 shutil.rmtree(os.path.join(BASE_DIR, g)); st.rerun()
 
-# --- 2. SCHEDA GIOCATORE ---
+# --- SCHEDA GIOCATORE ---
 elif st.session_state.pagina == 'partite':
     if st.button("⬅ Home"): st.session_state.pagina = 'home'; st.rerun()
     st.markdown(f"<h2>Analisi: {st.session_state.giocatore_sel.replace('_', ' ')}</h2>", unsafe_allow_html=True)
@@ -189,7 +189,7 @@ elif st.session_state.pagina == 'partite':
     with tab1:
         pop_match = st.popover("➕ Nuova Sessione", use_container_width=True)
         nome_m = pop_match.text_input("Nome Match")
-        if pop_match.button("Avvia Scouting"):
+        if pop_match.button("Inizia"):
             st.session_state.partita_attuale = nome_m
             st.session_state.dati_match = pd.DataFrame(columns=["Ora", "Azione", "Zona"])
             st.session_state.pagina = 'scouting'; st.rerun()
@@ -210,7 +210,7 @@ elif st.session_state.pagina == 'partite':
     with tab2:
         pop_video = st.popover("📤 Carica Video", use_container_width=True)
         up = pop_video.file_uploader("Seleziona MP4", type=["mp4"])
-        if up and pop_video.button("Conferma Upload"):
+        if up and pop_video.button("Carica"):
             v_dir = os.path.join(p_path, "VIDEO")
             os.makedirs(v_dir, exist_ok=True)
             v_path = os.path.join(v_dir, up.name)
@@ -219,23 +219,13 @@ elif st.session_state.pagina == 'partite':
             upload_to_drive(v_path, sid)
             st.rerun()
 
-        st.divider()
         v_dir = os.path.join(p_path, "VIDEO")
         if os.path.exists(v_dir):
-            video_files = [v for v in os.listdir(v_dir) if v.endswith('.mp4')]
-            cols = st.columns(2)
-            for i, vn in enumerate(video_files):
-                with cols[i % 2]:
-                    st.markdown(f'<div class="video-box">', unsafe_allow_html=True)
-                    st.write(f"🎥 {vn}")
+            for vn in os.listdir(v_dir):
+                if vn.endswith('.mp4'):
                     st.video(os.path.join(v_dir, vn))
-                    if st.button("Elimina", key=f"del_v_{vn}"):
-                        sid = get_or_create_player_folder(st.session_state.giocatore_sel)
-                        delete_from_drive(vn, sid)
-                        os.remove(os.path.join(v_dir, vn)); st.rerun()
-                    st.markdown('</div>', unsafe_allow_html=True)
 
-# --- 3. SCOUTING LIVE ---
+# --- SCOUTING LIVE ---
 elif st.session_state.pagina == 'scouting':
     st.markdown(f"<h3>Match: {st.session_state.partita_attuale}</h3>", unsafe_allow_html=True)
     c_campo, c_act = st.columns([1, 1])
@@ -244,13 +234,13 @@ elif st.session_state.pagina == 'scouting':
             cs = st.columns(3)
             for c in range(3):
                 nz = r*3+c+1
-                if cs[c].button(f"Z{nz}", width='stretch', key=f"z{nz}"): st.session_state.z_temp = f"Zona {nz}"
+                if cs[c].button(f"Z{nz}", width='stretch'): st.session_state.z_temp = f"Zona {nz}"
         st.dataframe(st.session_state.dati_match, use_container_width=True, hide_index=True)
     with c_act:
         if 'z_temp' in st.session_state:
             st.info(f"Punto: {st.session_state.z_temp}")
             for a in ["Pass ✅", "Tiro 🎯", "Recupero 🛡️", "Perso ⚠️"]:
-                if st.button(a, width='stretch', key=f"act_{a}"):
+                if st.button(a, width='stretch'):
                     nr = pd.DataFrame([[datetime.now().strftime("%H:%M"), a, st.session_state.z_temp]], columns=["Ora", "Azione", "Zona"])
                     st.session_state.dati_match = pd.concat([st.session_state.dati_match, nr], ignore_index=True)
         st.divider()
