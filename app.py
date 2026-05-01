@@ -43,14 +43,23 @@ def upload_to_drive(file_path, folder_id):
         st.error(f"Errore caricamento Drive: {e}")
 def get_or_create_player_folder(player_name):
     player_slug = player_name.replace(" ", "_")
+    # Cerchiamo una cartella che si chiama come il giocatore E che sta DENTRO la cartella principale
     query = f"name = '{player_slug}' and '{FOLDER_ID}' in parents and mimeType = 'application/vnd.google-apps.folder' and trashed = false"
-    results = drive_service.files().list(q=query).execute().get('files', [])
+    
+    results = drive_service.files().list(q=query, fields="files(id, name)").execute().get('files', [])
+    
     if results:
+        # Se esiste, restituisce l'ID della sottocartella
         return results[0]['id']
     else:
-        meta = {'name': player_slug, 'parents': [FOLDER_ID], 'mimeType': 'application/vnd.google-apps.folder'}
-        folder = drive_service.files().create(body=meta, fields='id').execute()
-        return folder.get('id')
+        # Se non esiste, la crea dentro FOLDER_ID e restituisce il nuovo ID
+        folder_metadata = {
+            'name': player_slug,
+            'parents': [FOLDER_ID],
+            'mimeType': 'application/vnd.google-apps.folder'
+        }
+        file = drive_service.files().create(body=folder_metadata, fields='id').execute()
+        return file.get('id')
 
 def download_from_drive(folder_id, local_path):
     if not os.path.exists(local_path): os.makedirs(local_path)
@@ -200,17 +209,27 @@ elif st.session_state.pagina == 'scouting':
                     st.session_state.dati_match = pd.concat([st.session_state.dati_match, nuova_riga], ignore_index=True)
         
         st.divider()
-        # IL TASTO SALVA E SINCRONIZZA È SOLO QUI
         if st.button("💾 SALVA E SINCRONIZZA SU DRIVE", type="primary", width='stretch'):
+            # 1. Definiamo il nome e il percorso locale
             fname = f"Scout_{st.session_state.partita_attuale}.xlsx"
             local_fpath = os.path.join(BASE_DIR, st.session_state.giocatore_sel, fname)
+            
+            # 2. Salviamo il file Excel localmente sul server
             st.session_state.dati_match.to_excel(local_fpath, index=False)
             
-            target_id = get_or_create_player_folder(st.session_state.giocatore_sel)
-            upload_to_drive(local_fpath, target_id)
+            # 3. TROVIAMO L'ID DELLA SOTTOCARTELLA (es. "sandrin")
+            # Questa funzione DEVE restituire l'ID della cartella del giocatore, non di FOLDER_ID
+            with st.spinner("Ricerca cartella giocatore su Drive..."):
+                target_id = get_or_create_player_folder(st.session_state.giocatore_sel)
             
-            st.success("Dati inviati al Cloud!")
-            st.session_state.pagina = 'partite'
-            st.rerun()
-
+            if target_id and target_id != FOLDER_ID:
+                # 4. CARICAMENTO
+                with st.spinner("Invio file a Google Drive..."):
+                    upload_to_drive(local_fpath, target_id)
+                
+                st.success(f"✅ Partita salvata correttamente in: Google Drive > {st.session_state.giocatore_sel}")
+                st.session_state.pagina = 'partite'
+                st.rerun()
+            else:
+                st.error("⚠️ Errore: non ho trovato la cartella specifica del giocatore. Il file è stato salvato solo localmente.")
 st.markdown('</div>', unsafe_allow_html=True)
