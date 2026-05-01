@@ -22,10 +22,8 @@ def get_drive_service():
 
 drive_service = get_drive_service()
 
-# --- FUNZIONI DI LOGICA DRIVE ---
-
+# --- LOGICA DRIVE MIGLIORATA ---
 def get_or_create_player_folder(player_name):
-    """Trova l'ID della sottocartella. Se non c'è, la crea."""
     player_slug = player_name.replace(" ", "_")
     query = f"name = '{player_slug}' and '{FOLDER_ID}' in parents and mimeType = 'application/vnd.google-apps.folder' and trashed = false"
     try:
@@ -36,21 +34,22 @@ def get_or_create_player_folder(player_name):
             meta = {'name': player_slug, 'parents': [FOLDER_ID], 'mimeType': 'application/vnd.google-apps.folder'}
             folder = drive_service.files().create(body=meta, fields='id').execute()
             return folder.get('id')
-    except: return None
+    except Exception as e:
+        st.error(f"Errore creazione cartella Drive: {e}")
+        return None
 
 def upload_to_drive(file_path, target_id):
-    """Carica il file ESATTAMENTE nell'ID fornito."""
     file_metadata = {'name': os.path.basename(file_path), 'parents': [target_id]}
     media = MediaFileUpload(file_path, mimetype='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet')
     try:
-        # Pulizia: se esiste già un file con lo stesso nome nella sottocartella, lo sovrascriviamo
         query = f"name = '{os.path.basename(file_path)}' and '{target_id}' in parents and trashed = false"
         res = drive_service.files().list(q=query).execute().get('files', [])
         if res:
             drive_service.files().update(fileId=res[0]['id'], media_body=media).execute()
         else:
             drive_service.files().create(body=file_metadata, media_body=media).execute()
-    except Exception as e: st.error(f"Errore Upload: {e}")
+    except Exception as e:
+        st.error(f"Errore caricamento file: {e}")
 
 def download_from_drive(folder_id, local_path):
     if not os.path.exists(local_path): os.makedirs(local_path)
@@ -69,7 +68,7 @@ def download_from_drive(folder_id, local_path):
                 while not done: _, done = downloader.next_chunk()
     except: pass
 
-# --- INTERFACCIA E GRAFICA (RESTORED) ---
+# --- INTERFACCIA E STILE ---
 st.set_page_config(page_title="Tactical Scout Pro", layout="wide")
 
 st.markdown("""
@@ -82,10 +81,20 @@ st.markdown("""
         background-size: cover; background-position: center; background-attachment: fixed;
     }
     .main-container {
-        background: rgba(15, 18, 25, 0.95); padding: 30px; border-radius: 25px;
-        border: 1px solid rgba(255,255,255,0.1); max-width: 900px; margin: auto; backdrop-filter: blur(15px);
+        background: rgba(15, 18, 25, 0.95); padding: 30px; border-radius: 20px;
+        border: 1px solid rgba(255,255,255,0.1); max-width: 950px; margin: auto; backdrop-filter: blur(10px);
     }
-    .stButton > button { border-radius: 12px !important; font-weight: 700 !important; }
+    /* Pulsanti Verde Scuro */
+    .stButton > button { 
+        background-color: #1b5e20 !important; 
+        color: white !important; 
+        border-radius: 8px !important; 
+        border: none !important;
+        padding: 0.5rem 1rem !important;
+    }
+    .stButton > button:hover { background-color: #2e7d32 !important; }
+    /* Pulsante Annulla/Chiudi */
+    .btn-annulla > button { background-color: #424242 !important; }
     h1, h2, h3 { color: white !important; text-align: center; }
     </style>
     """, unsafe_allow_html=True)
@@ -105,20 +114,25 @@ st.markdown('<div class="main-container">', unsafe_allow_html=True)
 if st.session_state.pagina == 'home':
     st.markdown("<h1>🏟️ Tactical Scout Pro</h1>", unsafe_allow_html=True)
     c1, c2 = st.columns([3, 1])
+    
     with c2:
         nuovo = st.popover("➕ Nuovo Atleta")
-        n_atleta = nuovo.text_input("Nome")
-        if nuovo.button("Crea Scheda"):
+        n_atleta = nuovo.text_input("Inserisci Nome")
+        col_pop1, col_pop2 = nuovo.columns(2)
+        if col_pop1.button("Conferma", width='stretch'):
             if n_atleta:
-                get_or_create_player_folder(n_atleta)
-                os.makedirs(os.path.join(BASE_DIR, n_atleta.replace(" ", "_")), exist_ok=True)
+                with st.spinner("Creazione cartella..."):
+                    get_or_create_player_folder(n_atleta)
+                    os.makedirs(os.path.join(BASE_DIR, n_atleta.replace(" ", "_")), exist_ok=True)
                 st.rerun()
+        if col_pop2.button("Chiudi", key="close_pop", width='stretch'):
+            st.rerun()
     
     st.divider()
     if os.path.exists(BASE_DIR):
         giocatori = sorted([d for d in os.listdir(BASE_DIR) if os.path.isdir(os.path.join(BASE_DIR, d))])
         for g in giocatori:
-            col_n, col_d = st.columns([6, 1])
+            col_n, col_d = st.columns([7, 1])
             if col_n.button(f"👤 {g.replace('_', ' ')}", width='stretch'):
                 st.session_state.giocatore_sel = g
                 st.session_state.pagina = 'partite'
@@ -128,73 +142,76 @@ if st.session_state.pagina == 'home':
 
 # --- 2. SCHEDA GIOCATORE ---
 elif st.session_state.pagina == 'partite':
-    if st.button("⬅ Torna alla Lista"):
+    col_back, col_title = st.columns([1, 4])
+    if col_back.button("⬅ Home"):
         st.session_state.pagina = 'home'; st.rerun()
     
     st.markdown(f"<h2>Analisi: {st.session_state.giocatore_sel.replace('_', ' ')}</h2>", unsafe_allow_html=True)
-    tab1, tab2 = st.tabs(["📊 Sessioni Match", "🎞️ Archivio Video"])
+    tab1, tab2 = st.tabs(["📊 Sessioni", "🎞️ Video"])
     p_path = os.path.join(BASE_DIR, st.session_state.giocatore_sel)
 
     with tab1:
-        if st.button("🔴 INIZIA NUOVO SCOUTING LIVE", width='stretch'):
-            st.session_state.partita_attuale = datetime.now().strftime("%Y-%m-%d_%H-%M")
+        st.markdown("### Nuova Sessione")
+        nome_match = st.text_input("Nome Partita (es. Finale_Campionato)", "Match_" + datetime.now().strftime("%d-%m"))
+        if st.button("🚀 AVVIA SCOUTING", width='stretch'):
+            st.session_state.partita_attuale = nome_match
             st.session_state.dati_match = pd.DataFrame(columns=["Ora", "Azione", "Zona"])
             st.session_state.pagina = 'scouting'; st.rerun()
         
-        st.write("---")
+        st.divider()
         if os.path.exists(p_path):
             for f in sorted([f for f in os.listdir(p_path) if f.endswith('.xlsx')], reverse=True):
-                c_f, c_d = st.columns([5, 1])
+                c_f, c_d = st.columns([6, 1])
                 c_f.write(f"📄 {f}")
                 if c_d.button("🗑️", key=f"del_f_{f}"):
                     os.remove(os.path.join(p_path, f)); st.rerun()
 
     with tab2:
-        up = st.file_uploader("Carica Video Clip", type=["mp4"])
-        if up and st.button("Sincronizza Video"):
+        up = st.file_uploader("Carica Clip", type=["mp4"])
+        c_up1, c_up2 = st.columns(2)
+        if up and c_up1.button("Sincronizza Video"):
             v_dir = os.path.join(p_path, "VIDEO")
             os.makedirs(v_dir, exist_ok=True)
             v_path = os.path.join(v_dir, up.name)
             with open(v_path, "wb") as f: f.write(up.getbuffer())
             sid = get_or_create_player_folder(st.session_state.giocatore_sel)
             upload_to_drive(v_path, sid)
-            st.success("Video caricato su Cloud!"); st.rerun()
+            st.success("Video salvato!"); st.rerun()
+        if c_up2.button("Annulla", key="cancel_video"): st.rerun()
 
 # --- 3. SCOUTING ---
 elif st.session_state.pagina == 'scouting':
-    st.markdown(f"<h3>Match in corso: {st.session_state.giocatore_sel}</h3>", unsafe_allow_html=True)
+    st.markdown(f"<h3>{st.session_state.partita_attuale} - {st.session_state.giocatore_sel}</h3>", unsafe_allow_html=True)
     c_campo, c_act = st.columns([1, 1])
     
     with c_campo:
+        st.write("Mappa Campo:")
         for r in range(3):
             cs = st.columns(3)
             for c in range(3):
                 nz = r*3+c+1
-                if cs[c].button(f"Z{nz}", width='stretch', key=f"btn_z{nz}"): st.session_state.z_temp = f"Zona {nz}"
+                if cs[c].button(f"Z{nz}", width='stretch', key=f"z{nz}"): st.session_state.z_temp = f"Zona {nz}"
         st.dataframe(st.session_state.dati_match, width='stretch')
 
     with c_act:
         if 'z_temp' in st.session_state:
-            st.info(f"Posizione: {st.session_state.z_temp}")
+            st.success(f"Posizione: {st.session_state.z_temp}")
             for a in ["Pass ✅", "Tiro 🎯", "Recupero 🛡️", "Perso ⚠️"]:
                 if st.button(a, width='stretch'):
                     nr = pd.DataFrame([[datetime.now().strftime("%H:%M"), a, st.session_state.z_temp]], columns=["Ora", "Azione", "Zona"])
                     st.session_state.dati_match = pd.concat([st.session_state.dati_match, nr], ignore_index=True)
         
         st.divider()
-        if st.button("💾 SALVA E SINCRONIZZA", type="primary", width='stretch'):
-            # Forza recupero ID cartella specifica
-            target_subfolder_id = get_or_create_player_folder(st.session_state.giocatore_sel)
-            
-            nome_f = f"Scout_{st.session_state.partita_attuale}.xlsx"
+        col_save, col_cancel = st.columns(2)
+        if col_save.button("💾 SALVA", type="primary", width='stretch'):
+            target_id = get_or_create_player_folder(st.session_state.giocatore_sel)
+            nome_f = f"{st.session_state.partita_attuale}.xlsx"
             path_f = os.path.join(BASE_DIR, st.session_state.giocatore_sel, nome_f)
             st.session_state.dati_match.to_excel(path_f, index=False)
-            
-            # Carica ESATTAMENTE nella sottocartella
-            upload_to_drive(path_f, target_subfolder_id)
-            
-            st.success("Sincronizzazione completata!")
-            st.session_state.pagina = 'partite'
-            st.rerun()
+            upload_to_drive(path_f, target_id)
+            st.session_state.pagina = 'partite'; st.rerun()
+        
+        if col_cancel.button("✖ CHIUDI", width='stretch'):
+            st.session_state.pagina = 'partite'; st.rerun()
 
 st.markdown('</div>', unsafe_allow_html=True)
