@@ -70,7 +70,7 @@ def download_from_drive(folder_id, local_path):
                 while not done: _, done = downloader.next_chunk()
     except: pass
 
-# --- STILE CLASSICO VERDE ---
+# --- STILE RIPRISTINATO E CORRETTO ---
 st.set_page_config(page_title="Tactical Scout Pro", layout="wide")
 
 st.markdown("""
@@ -93,7 +93,18 @@ st.markdown("""
     p, span, label, .stMarkdown { color: #FFFFFF !important; font-weight: 500; }
     h1, h2, h3 { color: #FFFFFF !important; text-align: center; font-weight: 700; }
     
-    /* Pulsanti Verde Pieno */
+    /* FIX POPOVER: Togliamo il bianco dai pulsanti dei menu a tendina */
+    div[data-testid="stPopover"] > button {
+        background-color: rgba(255, 255, 255, 0.1) !important;
+        border: 1px solid #1b5e20 !important;
+        color: white !important;
+    }
+    div[data-testid="stPopover"] > button:hover {
+        background-color: #1b5e20 !important;
+        border-color: white !important;
+    }
+
+    /* Pulsanti Standard Verde Pieno */
     .stButton > button { 
         background-color: #1b5e20 !important; 
         color: white !important; 
@@ -139,7 +150,7 @@ if st.session_state.pagina == 'home':
         giocatori = sorted([d for d in os.listdir(BASE_DIR) if os.path.isdir(os.path.join(BASE_DIR, d))])
         for g in giocatori:
             col_n, col_d = st.columns([7, 1])
-            if col_n.button(f"👤 {g.replace('_', ' ')}", width='stretch'):
+            if col_n.button(f"👤 {g.replace('_', ' ')}", width='stretch', key=f"btn_{g}"):
                 st.session_state.giocatore_sel = g
                 st.session_state.pagina = 'partite'
                 st.rerun()
@@ -218,7 +229,7 @@ elif st.session_state.pagina == 'scouting':
         if 'z_temp' in st.session_state:
             st.info(f"Punto: {st.session_state.z_temp}")
             for a in ["Pass ✅", "Tiro 🎯", "Recupero 🛡️", "Perso ⚠️"]:
-                if st.button(a, width='stretch'):
+                if st.button(a, width='stretch', key=f"act_{a}"):
                     nr = pd.DataFrame([[datetime.now().strftime("%H:%M"), a, st.session_state.z_temp]], columns=["Ora", "Azione", "Zona"])
                     st.session_state.dati_match = pd.concat([st.session_state.dati_match, nr], ignore_index=True)
         st.divider()
