@@ -25,14 +25,22 @@ drive_service = get_drive_service()
 # --- FUNZIONI SINCRONIZZAZIONE ---
 def upload_to_drive(file_path, folder_id):
     file_metadata = {'name': os.path.basename(file_path), 'parents': [folder_id]}
-    media = MediaFileUpload(file_path, resumable=True)
-    query = f"name = '{os.path.basename(file_path)}' and '{folder_id}' in parents and trashed = false"
-    results = drive_service.files().list(q=query).execute().get('files', [])
-    if results:
-        drive_service.files().update(fileId=results[0]['id'], media_body=media).execute()
-    else:
-        drive_service.files().create(body=file_metadata, media_body=media, fields='id').execute()
-
+    # Usiamo un metodo di caricamento più diretto
+    media = MediaFileUpload(file_path, mimetype='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet')
+    
+    try:
+        # Controlliamo se il file esiste già per non creare duplicati
+        query = f"name = '{os.path.basename(file_path)}' and '{folder_id}' in parents and trashed = false"
+        results = drive_service.files().list(q=query).execute().get('files', [])
+        
+        if results:
+            # Aggiorna
+            drive_service.files().update(fileId=results[0]['id'], media_body=media).execute()
+        else:
+            # Crea nuovo
+            drive_service.files().create(body=file_metadata, media_body=media, fields='id').execute()
+    except Exception as e:
+        st.error(f"Errore caricamento Drive: {e}")
 def get_or_create_player_folder(player_name):
     player_slug = player_name.replace(" ", "_")
     query = f"name = '{player_slug}' and '{FOLDER_ID}' in parents and mimeType = 'application/vnd.google-apps.folder' and trashed = false"
