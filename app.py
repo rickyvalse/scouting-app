@@ -163,35 +163,40 @@ elif st.session_state.pagina == 'partite':
                 st.video(os.path.join(v_dir, vn))
 
 # 3. SCOUTING LIVE
-elif st.session_state.pagina == 'scouting':
-    st.markdown(f"<h1>⚽ Match: {st.session_state.partita_attuale}</h1>", unsafe_allow_html=True)
-    c_campo, c_act = st.columns([1, 1])
-    with c_campo:
-        for r in range(3):
-            cs = st.columns(3)
-            for c in range(3):
-                nz = r*3+c+1
-                # AGGIORNATO: width='stretch'
-                if cs[c].button(f"Z{nz}", width='stretch'): 
-                    st.session_state.z_temp = f"Zona {nz}"
-        # AGGIORNATO: width='stretch'
-        st.dataframe(st.session_state.dati_match, width='stretch')
-    with c_act:
-        if 'z_temp' in st.session_state:
-            st.markdown(f"### 📍 {st.session_state.z_temp}")
-            for a in ["Pass ✅", "Tiro 🎯", "Recupero 🛡️", "Perso ⚠️"]:
-                # AGGIORNATO: width='stretch'
-                if st.button(a, width='stretch'):
-                    nuova_riga = pd.DataFrame([[datetime.now().strftime("%H:%M"), a, st.session_state.z_temp]], columns=["Ora", "Azione", "Zona"])
-                    st.session_state.dati_match = pd.concat([st.session_state.dati_match, nuova_riga], ignore_index=True)
-        # AGGIORNATO: width='stretch'
-        if st.button("💾 SALVA E SINCRONIZZA", type="primary", width='stretch'):
-            fname = f"Scout_{st.session_state.partita_attuale}.xlsx"
-            local_fpath = os.path.join(BASE_DIR, st.session_state.giocatore_sel, fname)
-            st.session_state.dati_match.to_excel(local_fpath, index=False)
-            q = f"name = '{st.session_state.giocatore_sel}' and '{FOLDER_ID}' in parents"
-            res = drive_service.files().list(q=q).execute().get('files', [])
-            if res: upload_to_drive(local_fpath, res[0]['id'])
-            st.session_state.pagina = 'partite'; st.rerun()
+# --- TROVA O CREA CARTELLA GIOCATORE ---
+def get_or_create_player_folder(player_name):
+    player_slug = player_name.replace(" ", "_")
+    # Cerca se esiste già su Drive
+    query = f"name = '{player_slug}' and '{FOLDER_ID}' in parents and mimeType = 'application/vnd.google-apps.folder' and trashed = false"
+    results = drive_service.files().list(q=query).execute().get('files', [])
+    
+    if results:
+        return results[0]['id']
+    else:
+        # Se per qualche motivo non esiste, la crea
+        meta = {'name': player_slug, 'parents': [FOLDER_ID], 'mimeType': 'application/vnd.google-apps.folder'}
+        folder = drive_service.files().create(body=meta, fields='id').execute()
+        return folder.get('id')
+
+# ... (nel punto dove salvi il file Excel, sostituisci con questo) ...
+
+if st.button("💾 SALVA E SINCRONIZZA", type="primary", width='stretch'):
+    fname = f"Scout_{st.session_state.partita_attuale}.xlsx"
+    local_fpath = os.path.join(BASE_DIR, st.session_state.giocatore_sel, fname)
+    
+    # 1. Salva localmente nell'app
+    st.session_state.dati_match.to_excel(local_fpath, index=False)
+    
+    # 2. Trova l'ID della cartella del giocatore (es. quella di "sandrin")
+    target_folder_id = get_or_create_player_folder(st.session_state.giocatore_sel)
+    
+    # 3. Carica il file dentro quella cartella specifica
+    if target_folder_id:
+        upload_to_drive(local_fpath, target_folder_id)
+        st.success(f"Partita salvata in Google Drive dentro la cartella {st.session_state.giocatore_sel}!")
+        st.session_state.pagina = 'partite'
+        st.rerun()
+    else:
+        st.error("Non sono riuscito a trovare la cartella su Google Drive.")
 
 st.markdown('</div>', unsafe_allow_html=True)
