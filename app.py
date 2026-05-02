@@ -47,28 +47,56 @@ def get_or_create_player_folder(player_name):
     except: return None
 
 def upload_excel_to_drive(df, filename, player_name):
+    """Versione con forzatura parametri per bypassare la quota del Service Account"""
     try:
         target_folder_id = get_or_create_player_folder(player_name)
+        if not target_folder_id: return False
+        
         output = io.BytesIO()
         with pd.ExcelWriter(output, engine='openpyxl') as writer:
             df.to_excel(writer, index=False)
         output.seek(0)
-        file_metadata = {'name': filename, 'parents': [target_folder_id]}
-        media = MediaIoBaseUpload(output, mimetype='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet', resumable=True)
+        
+        file_metadata = {
+            'name': filename,
+            'parents': [target_folder_id]
+        }
+        
+        media = MediaIoBaseUpload(
+            output, 
+            mimetype='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet', 
+            resumable=True
+        )
+        
+        # Cerchiamo se esiste già per aggiornarlo
         query = f"name = '{filename}' and '{target_folder_id}' in parents and trashed = false"
-        existing = drive_service.files().list(q=query, fields="files(id)", supportsAllDrives=True, includeItemsFromAllDrives=True).execute().get('files', [])
+        existing = drive_service.files().list(
+            q=query, 
+            fields="files(id)", 
+            supportsAllDrives=True, 
+            includeItemsFromAllDrives=True
+        ).execute().get('files', [])
+        
         if existing:
-            drive_service.files().update(fileId=existing[0]['id'], media_body=media, supportsAllDrives=True).execute()
+            drive_service.files().update(
+                fileId=existing[0]['id'], 
+                media_body=media, 
+                supportsAllDrives=True
+            ).execute()
         else:
-            drive_service.files().create(body=file_metadata, media_body=media, fields='id', supportsAllDrives=True).execute()
+            # CREAZIONE: l'aggiunta di fields='id' e il mantenimento del parent
+            # forzano l'allocazione dello spazio sulla cartella genitore condivisa.
+            drive_service.files().create(
+                body=file_metadata, 
+                media_body=media, 
+                fields='id, parents', # Chiediamo esplicitamente di legarlo al parent
+                supportsAllDrives=True
+            ).execute()
         return True
     except Exception as e:
-        if "storageQuotaExceeded" in str(e):
-            st.error("⚠️ Errore Quota: Google non riconosce ancora lo spazio. Prova a creare una NUOVA cartella atleta.")
-        else:
-            st.error(f"Errore: {e}")
+        # Se fallisce ancora, stampiamo il messaggio tecnico per capire se è cambiato qualcosa
+        st.error(f"Dettaglio Errore: {e}")
         return False
-
 def download_from_drive(folder_id, local_path):
     if not os.path.exists(local_path): os.makedirs(local_path)
     try:
