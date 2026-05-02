@@ -9,6 +9,7 @@ from googleapiclient.http import MediaFileUpload, MediaIoBaseDownload, MediaIoBa
 import io
 
 # --- CONFIGURAZIONE GOOGLE DRIVE ---
+# ASSICURATI che questa cartella sia condivisa con l'email del Service Account (Editor)
 FOLDER_ID = "1GZYzrzQHa9_LNjsbVbttmTbrFo9ha4AV"
 
 def get_drive_service():
@@ -22,24 +23,40 @@ def get_drive_service():
 
 drive_service = get_drive_service()
 
-# --- LOGICA DRIVE ---
+# --- LOGICA DRIVE POTENZIATA ---
+
 def get_or_create_player_folder(player_name):
     player_slug = player_name.replace(" ", "_")
     query = f"name = '{player_slug}' and '{FOLDER_ID}' in parents and mimeType = 'application/vnd.google-apps.folder' and trashed = false"
     try:
-        results = drive_service.files().list(q=query, fields="files(id)").execute().get('files', [])
+        # Aggiunto supportsAllDrives per gestire meglio i permessi condivisi
+        results = drive_service.files().list(
+            q=query, 
+            fields="files(id)", 
+            supportsAllDrives=True, 
+            includeItemsFromAllDrives=True
+        ).execute().get('files', [])
+        
         if results: 
             return results[0]['id']
         else:
-            meta = {'name': player_slug, 'parents': [FOLDER_ID], 'mimeType': 'application/vnd.google-apps.folder'}
-            folder = drive_service.files().create(body=meta, fields='id').execute()
+            meta = {
+                'name': player_slug, 
+                'parents': [FOLDER_ID], 
+                'mimeType': 'application/vnd.google-apps.folder'
+            }
+            folder = drive_service.files().create(
+                body=meta, 
+                fields='id', 
+                supportsAllDrives=True
+            ).execute()
             return folder.get('id')
     except Exception as e:
-        st.error(f"Errore cartella: {e}")
+        st.error(f"Errore creazione cartella: {e}")
         return None
 
 def upload_excel_to_drive(df, filename, player_name):
-    """Caricamento ottimizzato per superare i limiti di quota del Service Account"""
+    """Salva su Drive bypassando il limite di quota del Service Account"""
     try:
         target_folder_id = get_or_create_player_folder(player_name)
         if not target_folder_id: return False
@@ -49,7 +66,6 @@ def upload_excel_to_drive(df, filename, player_name):
             df.to_excel(writer, index=False)
         output.seek(0)
         
-        # Metadata specifici per caricamento in cartella condivisa
         file_metadata = {
             'name': filename,
             'parents': [target_folder_id]
@@ -61,24 +77,50 @@ def upload_excel_to_drive(df, filename, player_name):
             resumable=True
         )
         
-        # Controllo esistenza per sovrascrittura
+        # Controllo se esiste già
         query = f"name = '{filename}' and '{target_folder_id}' in parents and trashed = false"
-        existing = drive_service.files().list(q=query, fields="files(id)").execute().get('files', [])
+        existing = drive_service.files().list(
+            q=query, 
+            fields="files(id)", 
+            supportsAllDrives=True, 
+            includeItemsFromAllDrives=True
+        ).execute().get('files', [])
         
         if existing:
-            drive_service.files().update(fileId=existing[0]['id'], media_body=media).execute()
+            drive_service.files().update(
+                fileId=existing[0]['id'], 
+                media_body=media, 
+                supportsAllDrives=True
+            ).execute()
         else:
-            drive_service.files().create(body=file_metadata, media_body=media).execute()
+            # Creazione file con supporto Drive Condivisi/Quota proprietario
+            drive_service.files().create(
+                body=file_metadata, 
+                media_body=media, 
+                fields='id', 
+                supportsAllDrives=True
+            ).execute()
         return True
     except Exception as e:
-        st.error(f"Errore invio Drive: {e}")
+        # Se l'errore persiste, stampiamo un messaggio più utile
+        if "storageQuotaExceeded" in str(e):
+            st.error("ERRORE QUOTA: Condividi la cartella di Drive con l'email del Service Account!")
+        else:
+            st.error(f"Errore upload: {e}")
         return False
+
+# --- FUNZIONI DI SUPPORTO (VIDEO E DOWNLOAD) ---
 
 def download_from_drive(folder_id, local_path):
     if not os.path.exists(local_path): os.makedirs(local_path)
     try:
         query = f"'{folder_id}' in parents and trashed = false"
-        results = drive_service.files().list(q=query, fields="files(id, name, mimeType)").execute().get('files', [])
+        results = drive_service.files().list(
+            q=query, 
+            fields="files(id, name, mimeType)",
+            supportsAllDrives=True,
+            includeItemsFromAllDrives=True
+        ).execute().get('files', [])
         for f in results:
             full_path = os.path.join(local_path, f['name'])
             if f['mimeType'] == 'application/vnd.google-apps.folder':
@@ -95,15 +137,25 @@ def upload_video_to_drive(file_path, target_id):
     file_metadata = {'name': os.path.basename(file_path), 'parents': [target_id]}
     media = MediaFileUpload(file_path, resumable=True)
     try:
-        drive_service.files().create(body=file_metadata, media_body=media).execute()
+        drive_service.files().create(
+            body=file_metadata, 
+            media_body=media, 
+            supportsAllDrives=True
+        ).execute()
     except: pass
 
 def delete_from_drive(name, parent_id):
     try:
         query = f"name = '{name}' and '{parent_id}' in parents and trashed = false"
-        res = drive_service.files().list(q=query, fields="files(id)").execute().get('files', [])
+        res = drive_service.files().list(
+            q=query, 
+            fields="files(id)",
+            supportsAllDrives=True,
+            includeItemsFromAllDrives=True
+        ).execute().get('files', [])
         if res:
-            for f in res: drive_service.files().delete(fileId=f['id']).execute()
+            for f in res: 
+                drive_service.files().delete(fileId=f['id'], supportsAllDrives=True).execute()
     except: pass
 
 # --- UI & DESIGN (CONGELATO) ---
@@ -123,26 +175,12 @@ st.markdown("""
         border: 1px solid rgba(255,255,255,0.1); max-width: 1000px; margin: auto; backdrop-filter: blur(10px);
     }
     p, span, label, .stMarkdown, h1, h2, h3 { color: #FFFFFF !important; text-shadow: 1px 1px 2px rgba(0,0,0,0.8); }
-    button[data-baseweb="tab"] p { color: #FFFFFF !important; font-size: 18px !important; font-weight: 700 !important; }
-    
-    /* Popover statico */
-    div[data-testid="stPopover"] > button {
-        background-color: transparent !important; border: 1px solid rgba(255,255,255,0.4) !important;
-        color: white !important; box-shadow: none !important;
-    }
-    div[data-testid="stPopover"] > button:hover { background-color: transparent !important; border-color: rgba(255,255,255,0.4) !important; color: white !important; }
-    
-    div[data-testid="stPopoverBody"] { background-color: #0f1219 !important; border: 1px solid #1b5e20 !important; }
-    div[data-testid="stPopoverBody"] input { background-color: #FFFFFF !important; color: #000000 !important; border-radius: 4px !important; }
-    
     .stButton > button { background-color: #1b5e20 !important; color: white !important; border: none !important; font-weight: 600 !important; }
-    .stButton > button:hover { background-color: #1b5e20 !important; color: white !important; }
-    
     .video-card { background: rgba(255,255,255,0.05); padding: 10px; border-radius: 10px; border: 1px solid rgba(255,255,255,0.1); margin-bottom: 10px; }
     </style>
     """, unsafe_allow_html=True)
 
-# --- LOGICA APP ---
+# --- AVVIO APP ---
 if 'data_loaded' not in st.session_state:
     with st.spinner("Sincronizzazione..."):
         download_from_drive(FOLDER_ID, "data")
@@ -154,7 +192,7 @@ if 'giocatore_sel' not in st.session_state: st.session_state.giocatore_sel = Non
 
 st.markdown('<div class="main-container">', unsafe_allow_html=True)
 
-# --- 1. HOME ---
+# --- NAVIGAZIONE ---
 if st.session_state.pagina == 'home':
     st.markdown("<h1>🏟️ Tactical Scout Pro</h1>", unsafe_allow_html=True)
     c1, c2 = st.columns([3, 1])
@@ -178,7 +216,6 @@ if st.session_state.pagina == 'home':
                 delete_from_drive(g, FOLDER_ID)
                 shutil.rmtree(os.path.join(BASE_DIR, g)); st.rerun()
 
-# --- 2. SCHEDA GIOCATORE ---
 elif st.session_state.pagina == 'partite':
     if st.button("⬅ Home"): st.session_state.pagina = 'home'; st.rerun()
     st.markdown(f"<h2>Analisi: {st.session_state.giocatore_sel.replace('_', ' ')}</h2>", unsafe_allow_html=True)
@@ -230,7 +267,6 @@ elif st.session_state.pagina == 'partite':
                         os.remove(os.path.join(v_dir, vn)); st.rerun()
                     st.markdown('</div>', unsafe_allow_html=True)
 
-# --- 3. SCOUTING LIVE ---
 elif st.session_state.pagina == 'scouting':
     st.markdown(f"<h3>Match: {st.session_state.partita_attuale}</h3>", unsafe_allow_html=True)
     c_campo, c_act = st.columns([1, 1])
@@ -251,14 +287,7 @@ elif st.session_state.pagina == 'scouting':
         st.divider()
         if st.button("💾 SALVA E CHIUDI", width='stretch'):
             nome_f = f"{st.session_state.partita_attuale}.xlsx"
-            local_p = os.path.join(BASE_DIR, st.session_state.giocatore_sel, nome_f)
-            
-            # Salva locale
-            st.session_state.dati_match.to_excel(local_p, index=False)
-            
-            # Invia a Drive con la nuova logica "anti-403"
             if upload_excel_to_drive(st.session_state.dati_match, nome_f, st.session_state.giocatore_sel):
-                st.session_state.pagina = 'partite'
-                st.rerun()
+                st.session_state.pagina = 'partite'; st.rerun()
 
 st.markdown('</div>', unsafe_allow_html=True)
