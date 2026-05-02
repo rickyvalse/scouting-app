@@ -22,58 +22,51 @@ def get_drive_service():
 
 drive_service = get_drive_service()
 
-# --- LOGICA DRIVE (MIGLIORATA PER EXCEL) ---
+# --- LOGICA DRIVE POTENZIATA ---
 def get_or_create_player_folder(player_name):
     player_slug = player_name.replace(" ", "_")
     query = f"name = '{player_slug}' and '{FOLDER_ID}' in parents and mimeType = 'application/vnd.google-apps.folder' and trashed = false"
     try:
         results = drive_service.files().list(q=query, fields="files(id)").execute().get('files', [])
-        if results: return results[0]['id']
+        if results: 
+            return results[0]['id']
         else:
             meta = {'name': player_slug, 'parents': [FOLDER_ID], 'mimeType': 'application/vnd.google-apps.folder'}
             folder = drive_service.files().create(body=meta, fields='id').execute()
             return folder.get('id')
-    except: return None
+    except Exception as e:
+        st.error(f"Errore creazione cartella: {e}")
+        return None
 
-def upload_excel_to_drive(df, filename, target_id):
-    """Salva il DataFrame in un buffer e lo carica direttamente su Drive"""
-    output = io.BytesIO()
-    with pd.ExcelWriter(output, engine='xlsxwriter') as writer:
-        df.to_excel(writer, index=False)
-    output.seek(0)
-    
-    file_metadata = {'name': filename, 'parents': [target_id]}
-    media = MediaIoBaseUpload(output, mimetype='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet', resumable=True)
-    
+def upload_excel_to_drive(df, filename, player_name):
+    """Salva il file Excel e lo spinge su Drive con engine openpyxl"""
     try:
-        # Controlla se esiste già
-        query = f"name = '{filename}' and '{target_id}' in parents and trashed = false"
-        res = drive_service.files().list(q=query).execute().get('files', [])
-        if res:
-            drive_service.files().update(fileId=res[0]['id'], media_body=media).execute()
+        # 1. Recupera ID cartella (o creala se sparita)
+        target_folder_id = get_or_create_player_folder(player_name)
+        
+        # 2. Crea il file Excel in memoria
+        output = io.BytesIO()
+        with pd.ExcelWriter(output, engine='openpyxl') as writer:
+            df.to_excel(writer, index=False)
+        output.seek(0)
+        
+        # 3. Prepara Metadata
+        file_metadata = {'name': filename, 'parents': [target_folder_id]}
+        media = MediaIoBaseUpload(output, mimetype='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet', resumable=True)
+        
+        # 4. Controlla se esiste già per sovrascriverlo
+        query = f"name = '{filename}' and '{target_folder_id}' in parents and trashed = false"
+        existing_files = drive_service.files().list(q=query, fields="files(id)").execute().get('files', [])
+        
+        if existing_files:
+            drive_service.files().update(fileId=existing_files[0]['id'], media_body=media).execute()
         else:
             drive_service.files().create(body=file_metadata, media_body=media).execute()
+            
+        return True
     except Exception as e:
-        st.error(f"Errore upload Excel: {e}")
-
-def upload_to_drive(file_path, target_id):
-    file_metadata = {'name': os.path.basename(file_path), 'parents': [target_id]}
-    media = MediaFileUpload(file_path, resumable=True)
-    try:
-        query = f"name = '{os.path.basename(file_path)}' and '{target_id}' in parents and trashed = false"
-        res = drive_service.files().list(q=query).execute().get('files', [])
-        if res: drive_service.files().update(fileId=res[0]['id'], media_body=media).execute()
-        else: drive_service.files().create(body=file_metadata, media_body=media).execute()
-    except: pass
-
-def delete_from_drive(name, parent_id):
-    try:
-        query = f"name = '{name}' and '{parent_id}' in parents and trashed = false"
-        res = drive_service.files().list(q=query, fields="files(id)").execute().get('files', [])
-        if res:
-            for f in res:
-                drive_service.files().delete(fileId=f['id']).execute()
-    except: pass
+        st.error(f"Errore durante l'invio a Drive: {e}")
+        return False
 
 def download_from_drive(folder_id, local_path):
     if not os.path.exists(local_path): os.makedirs(local_path)
@@ -82,7 +75,8 @@ def download_from_drive(folder_id, local_path):
         results = drive_service.files().list(q=query, fields="files(id, name, mimeType)").execute().get('files', [])
         for f in results:
             full_path = os.path.join(local_path, f['name'])
-            if f['mimeType'] == 'application/vnd.google-apps.folder': download_from_drive(f['id'], full_path)
+            if f['mimeType'] == 'application/vnd.google-apps.folder':
+                download_from_drive(f['id'], full_path)
             else:
                 request = drive_service.files().get_media(fileId=f['id'])
                 fh = io.FileIO(full_path, 'wb')
@@ -91,59 +85,54 @@ def download_from_drive(folder_id, local_path):
                 while not done: _, done = downloader.next_chunk()
     except: pass
 
-# --- UI & DESIGN (INVARIATO COME RICHIESTO) ---
+def upload_video_to_drive(file_path, target_id):
+    file_metadata = {'name': os.path.basename(file_path), 'parents': [target_id]}
+    media = MediaFileUpload(file_path, resumable=True)
+    try:
+        drive_service.files().create(body=file_metadata, media_body=media).execute()
+    except: pass
+
+def delete_from_drive(name, parent_id):
+    try:
+        query = f"name = '{name}' and '{parent_id}' in parents and trashed = false"
+        res = drive_service.files().list(q=query, fields="files(id)").execute().get('files', [])
+        if res:
+            for f in res: drive_service.files().delete(fileId=f['id']).execute()
+    except: pass
+
+# --- UI & DESIGN (CONGELATO COME RICHIESTO) ---
 st.set_page_config(page_title="Tactical Scout Pro", layout="wide")
 
 st.markdown("""
     <style>
     @import url('https://fonts.googleapis.com/css2?family=Urbanist:wght@400;700&display=swap');
-    
     html, body, [class*="css"] { font-family: 'Urbanist', sans-serif !important; color: #FFFFFF !important; }
-    
     .stApp {
         background: linear-gradient(rgba(0,0,0,0.8), rgba(0,0,0,0.8)), 
                     url('https://images.unsplash.com/photo-1556056504-5c7696c4c28d?q=80&w=2076&auto=format&fit=crop');
         background-size: cover; background-position: center; background-attachment: fixed;
     }
-    
     .main-container {
         background: rgba(15, 18, 25, 0.95); padding: 30px; border-radius: 20px;
         border: 1px solid rgba(255,255,255,0.1); max-width: 1000px; margin: auto; backdrop-filter: blur(10px);
     }
-
     p, span, label, .stMarkdown, h1, h2, h3 { color: #FFFFFF !important; text-shadow: 1px 1px 2px rgba(0,0,0,0.8); }
-
     button[data-baseweb="tab"] p { color: #FFFFFF !important; font-size: 18px !important; font-weight: 700 !important; }
-
     div[data-testid="stPopover"] > button {
-        background-color: transparent !important;
-        border: 1px solid rgba(255,255,255,0.4) !important;
-        color: white !important;
-        box-shadow: none !important;
+        background-color: transparent !important; border: 1px solid rgba(255,255,255,0.4) !important;
+        color: white !important; box-shadow: none !important;
     }
-    
-    div[data-testid="stPopover"] > button:hover, 
-    div[data-testid="stPopover"] > button:active,
-    div[data-testid="stPopover"] > button:focus {
-        background-color: transparent !important;
-        border-color: rgba(255,255,255,0.4) !important;
-        color: white !important;
-    }
-
+    div[data-testid="stPopover"] > button:hover { background-color: transparent !important; color: white !important; }
     div[data-testid="stPopoverBody"] { background-color: #0f1219 !important; border: 1px solid #1b5e20 !important; }
-
     div[data-testid="stPopoverBody"] input { background-color: #FFFFFF !important; color: #000000 !important; border-radius: 4px !important; }
-
     .stButton > button { background-color: #1b5e20 !important; color: white !important; border: none !important; font-weight: 600 !important; }
-    .stButton > button:hover { background-color: #1b5e20 !important; }
-
     .video-card { background: rgba(255,255,255,0.05); padding: 10px; border-radius: 10px; border: 1px solid rgba(255,255,255,0.1); margin-bottom: 10px; }
     </style>
     """, unsafe_allow_html=True)
 
-# --- AVVIO APP ---
+# --- AVVIO ---
 if 'data_loaded' not in st.session_state:
-    with st.spinner("Sincronizzazione dati..."):
+    with st.spinner("Sincronizzazione..."):
         download_from_drive(FOLDER_ID, "data")
         st.session_state.data_loaded = True
 
@@ -153,7 +142,7 @@ if 'giocatore_sel' not in st.session_state: st.session_state.giocatore_sel = Non
 
 st.markdown('<div class="main-container">', unsafe_allow_html=True)
 
-# --- 1. HOME ---
+# --- HOME ---
 if st.session_state.pagina == 'home':
     st.markdown("<h1>🏟️ Tactical Scout Pro</h1>", unsafe_allow_html=True)
     c1, c2 = st.columns([3, 1])
@@ -165,7 +154,6 @@ if st.session_state.pagina == 'home':
                 get_or_create_player_folder(n_atleta)
                 os.makedirs(os.path.join(BASE_DIR, n_atleta.replace(" ", "_")), exist_ok=True)
                 st.rerun()
-    
     st.divider()
     if os.path.exists(BASE_DIR):
         giocatori = sorted([d for d in os.listdir(BASE_DIR) if os.path.isdir(os.path.join(BASE_DIR, d))])
@@ -173,17 +161,15 @@ if st.session_state.pagina == 'home':
             col_n, col_d = st.columns([7, 1])
             if col_n.button(f"👤 {g.replace('_', ' ')}", width='stretch', key=f"btn_{g}"):
                 st.session_state.giocatore_sel = g
-                st.session_state.pagina = 'partite'
-                st.rerun()
+                st.session_state.pagina = 'partite'; st.rerun()
             if col_d.button("🗑️", key=f"del_{g}"):
                 delete_from_drive(g, FOLDER_ID)
                 shutil.rmtree(os.path.join(BASE_DIR, g)); st.rerun()
 
-# --- 2. SCHEDA GIOCATORE ---
+# --- SCHEDA GIOCATORE ---
 elif st.session_state.pagina == 'partite':
     if st.button("⬅ Home"): st.session_state.pagina = 'home'; st.rerun()
     st.markdown(f"<h2>Analisi: {st.session_state.giocatore_sel.replace('_', ' ')}</h2>", unsafe_allow_html=True)
-    
     tab1, tab2 = st.tabs(["📊 Sessioni", "🎞️ Videoteca"])
     p_path = os.path.join(BASE_DIR, st.session_state.giocatore_sel)
 
@@ -194,11 +180,9 @@ elif st.session_state.pagina == 'partite':
             st.session_state.partita_attuale = nome_m
             st.session_state.dati_match = pd.DataFrame(columns=["Ora", "Azione", "Zona"])
             st.session_state.pagina = 'scouting'; st.rerun()
-        
         st.divider()
         if os.path.exists(p_path):
-            files = [f for f in os.listdir(p_path) if f.endswith('.xlsx')]
-            for f in sorted(files, reverse=True):
+            for f in sorted([x for x in os.listdir(p_path) if x.endswith('.xlsx')], reverse=True):
                 c_f, c_down, c_del = st.columns([5, 1, 1])
                 c_f.write(f"📄 {f}")
                 with open(os.path.join(p_path, f), "rb") as fd:
@@ -217,15 +201,13 @@ elif st.session_state.pagina == 'partite':
             v_path = os.path.join(v_dir, up.name)
             with open(v_path, "wb") as f: f.write(up.getbuffer())
             sid = get_or_create_player_folder(st.session_state.giocatore_sel)
-            upload_to_drive(v_path, sid)
-            st.rerun()
-
+            upload_video_to_drive(v_path, sid); st.rerun()
         st.divider()
         v_dir = os.path.join(p_path, "VIDEO")
         if os.path.exists(v_dir):
-            video_files = [v for v in os.listdir(v_dir) if v.endswith('.mp4')]
+            v_files = [v for v in os.listdir(v_dir) if v.endswith('.mp4')]
             cols = st.columns(3)
-            for i, vn in enumerate(video_files):
+            for i, vn in enumerate(v_files):
                 with cols[i % 3]:
                     st.markdown('<div class="video-card">', unsafe_allow_html=True)
                     st.write(f"🎥 {vn[:15]}...")
@@ -236,7 +218,7 @@ elif st.session_state.pagina == 'partite':
                         os.remove(os.path.join(v_dir, vn)); st.rerun()
                     st.markdown('</div>', unsafe_allow_html=True)
 
-# --- 3. SCOUTING LIVE ---
+# --- SCOUTING LIVE ---
 elif st.session_state.pagina == 'scouting':
     st.markdown(f"<h3>Match: {st.session_state.partita_attuale}</h3>", unsafe_allow_html=True)
     c_campo, c_act = st.columns([1, 1])
@@ -256,15 +238,16 @@ elif st.session_state.pagina == 'scouting':
                     st.session_state.dati_match = pd.concat([st.session_state.dati_match, nr], ignore_index=True)
         st.divider()
         if st.button("💾 SALVA E CHIUDI", width='stretch'):
-            target_id = get_or_create_player_folder(st.session_state.giocatore_sel)
             nome_f = f"{st.session_state.partita_attuale}.xlsx"
-            path_f = os.path.join(BASE_DIR, st.session_state.giocatore_sel, nome_f)
+            local_p = os.path.join(BASE_DIR, st.session_state.giocatore_sel, nome_f)
             
-            # SALVA LOCALE
-            st.session_state.dati_match.to_excel(path_f, index=False)
-            # CARICA SU DRIVE (NUOVO METODO MEMORIA)
-            upload_excel_to_drive(st.session_state.dati_match, nome_f, target_id)
+            # Salva locale (per sicurezza)
+            st.session_state.dati_match.to_excel(local_p, index=False)
             
-            st.session_state.pagina = 'partite'; st.rerun()
+            # Carica su Drive (Nuova Logica)
+            successo = upload_excel_to_drive(st.session_state.dati_match, nome_f, st.session_state.giocatore_sel)
+            
+            if successo:
+                st.session_state.pagina = 'partite'; st.rerun()
 
 st.markdown('</div>', unsafe_allow_html=True)
