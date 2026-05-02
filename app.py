@@ -22,8 +22,7 @@ def get_drive_service():
 
 drive_service = get_drive_service()
 
-# --- LOGICA DRIVE (VERSIONE FINALE ANTI-QUOTA) ---
-
+# --- LOGICA DRIVE ---
 def get_or_create_player_folder(player_name):
     player_slug = player_name.replace(" ", "_")
     query = f"name = '{player_slug}' and '{FOLDER_ID}' in parents and mimeType = 'application/vnd.google-apps.folder' and trashed = false"
@@ -48,49 +47,20 @@ def get_or_create_player_folder(player_name):
     except: return None
 
 def upload_excel_to_drive(df, filename, player_name):
-    """Questa versione forza l'upload usando la quota del proprietario della cartella"""
     try:
         target_folder_id = get_or_create_player_folder(player_name)
-        
         output = io.BytesIO()
         with pd.ExcelWriter(output, engine='openpyxl') as writer:
             df.to_excel(writer, index=False)
         output.seek(0)
-        
-        file_metadata = {
-            'name': filename,
-            'parents': [target_folder_id]
-        }
-        
-        media = MediaIoBaseUpload(
-            output, 
-            mimetype='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet', 
-            resumable=True
-        )
-        
-        # Cerchiamo se esiste già
+        file_metadata = {'name': filename, 'parents': [target_folder_id]}
+        media = MediaIoBaseUpload(output, mimetype='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet', resumable=True)
         query = f"name = '{filename}' and '{target_folder_id}' in parents and trashed = false"
-        existing = drive_service.files().list(
-            q=query, 
-            fields="files(id)", 
-            supportsAllDrives=True, 
-            includeItemsFromAllDrives=True
-        ).execute().get('files', [])
-        
+        existing = drive_service.files().list(q=query, fields="files(id)", supportsAllDrives=True, includeItemsFromAllDrives=True).execute().get('files', [])
         if existing:
-            drive_service.files().update(
-                fileId=existing[0]['id'], 
-                media_body=media, 
-                supportsAllDrives=True
-            ).execute()
+            drive_service.files().update(fileId=existing[0]['id'], media_body=media, supportsAllDrives=True).execute()
         else:
-            # NOTA: Usiamo supportsAllDrives=True che è la chiave per usare la quota della cartella condivisa
-            drive_service.files().create(
-                body=file_metadata, 
-                media_body=media, 
-                fields='id', 
-                supportsAllDrives=True
-            ).execute()
+            drive_service.files().create(body=file_metadata, media_body=media, fields='id', supportsAllDrives=True).execute()
         return True
     except Exception as e:
         if "storageQuotaExceeded" in str(e):
@@ -98,8 +68,6 @@ def upload_excel_to_drive(df, filename, player_name):
         else:
             st.error(f"Errore: {e}")
         return False
-
-# --- FUNZIONI VIDEO E DOWNLOAD (INVARIANTI) ---
 
 def download_from_drive(folder_id, local_path):
     if not os.path.exists(local_path): os.makedirs(local_path)
@@ -132,7 +100,7 @@ def delete_from_drive(name, parent_id):
             for f in res: drive_service.files().delete(fileId=f['id'], supportsAllDrives=True).execute()
     except: pass
 
-# --- UI & DESIGN (CONGELATO) ---
+# --- UI & DESIGN ---
 st.set_page_config(page_title="Tactical Scout Pro", layout="wide")
 
 st.markdown("""
@@ -161,7 +129,6 @@ st.markdown("""
     </style>
     """, unsafe_allow_html=True)
 
-# --- LOGICA APP ---
 if 'data_loaded' not in st.session_state:
     with st.spinner("Sincronizzazione..."):
         download_from_drive(FOLDER_ID, "data")
@@ -249,8 +216,11 @@ elif st.session_state.pagina == 'partite':
                         os.remove(os.path.join(v_dir, vn)); st.rerun()
                     st.markdown('</div>', unsafe_allow_html=True)
 
-# --- SCOUTING ---
+# --- SCOUTING LIVE ---
 elif st.session_state.pagina == 'scouting':
+    # NUOVO TASTO HOME DURANTE RACCOLTA DATI
+    if st.button("⬅ Home"): st.session_state.pagina = 'home'; st.rerun()
+    
     st.markdown(f"<h3>Match: {st.session_state.partita_attuale}</h3>", unsafe_allow_html=True)
     c_campo, c_act = st.columns([1, 1])
     with c_campo:
